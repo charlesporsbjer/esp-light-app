@@ -1,0 +1,44 @@
+build/
+sdkconfig
+sdkconfig.old
+
+# Build output
+build/
+
+# Project description metadata (can be regenerated)
+.project_description.json
+
+# ESP-IDF local settings
+sdkconfig
+sdkconfig.old
+sdkconfig.defaults
+
+# optional
+# .vscode/
+
+# Backup files
+*.bak
+*.orig
+*.swp
+
+# OS-generated files
+.DS_Store
+Thumbs.db
+
+# Python virtual environments (if you use one)
+venv/
+.env/
+
+# CMake generated files
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+Makefile
+
+# IDF-specific flash images
+*.bin
+*.elf
+*.map
+
+# Logs
+*.log
