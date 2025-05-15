@@ -91,7 +91,7 @@ int parse_led_data(char* jsonstr) {
     
     // get the timezone and daylight savings time
     ledData.daylightSavingsTime = cJSON_GetObjectItem(root, "daylightSavingsTime")->valueint;
-    ledData.timeZoneOffsetHrs = cJSON_GetObjectItem(root, "timeZoneOffsetHrs")->valueint;
+    ledData.timezone = cJSON_GetObjectItem(root, "timeZoneOffsetHrs")->valueint;
     
     // copy the values intensities
     ledData.sunLightIntensity = cJSON_GetObjectItem(root, "sunLightIntensity")->valueint;
@@ -147,7 +147,7 @@ void init_led_data() {
     
     // Timezone
     ledData.daylightSavingsTime = false;
-    ledData.timeZoneOffsetHrs = 0; // Initialize to UTC+0
+    ledData.timezone = 0; // Initialize to UTC+0
     
     // Red light
     ledData.redLightIntensity = 0;

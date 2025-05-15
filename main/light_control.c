@@ -293,10 +293,13 @@ bool is_day_active() {
  */
 void convert_timeNow_to_string(uint32_t timeNow, char* buffer) {
     // Convert timeNow to HH:MM format
-    if (ledData.daylightSavingsTime) {
-        timeNow += 3600; // Add 1 hour for daylight savings time
-    }
-    timeNow += ledData.timeZoneOffsetHrs * 3600; // Add timezone offset in seconds
+    
+    // if (ledData.daylightSavingsTime) {
+    //     timeNow += 3600; // Add 1 hour for daylight savings time
+    // }
+    // daylight savings time is handled automatically by the app.
+
+    timeNow += ledData.timezone * 3600; // Add timezone offset in seconds
 
     uint32_t hours = (timeNow / 3600) % 24;
     uint32_t minutes = (timeNow / 60) % 60;
