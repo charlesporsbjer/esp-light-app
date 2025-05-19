@@ -29,7 +29,7 @@ void print_led_data();
 void handle_light_protocol(QueueData_t *data_received);
 
 /**
- * @brief Task to control the lights.
+ * @brief Task to handle data processing.
  * 
  * @param pvParameters Parameters for the task (not used).
  */

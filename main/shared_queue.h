@@ -1,7 +1,6 @@
-#ifndef QUEUE_SHARED_H
-#define QUEUE_SHARED_H
+#ifndef SHARED_QUEUE_H
+#define SHARED_QUEUE_H
 
-#include "freertos/FreeRTOS.h"
 #include "freertos/queue.h"
 
 
@@ -14,4 +13,4 @@ typedef struct {
 // Declare the queue handle as extern
 extern QueueHandle_t shared_queue;
 
-#endif // QUEUE_SHARED_H
+#endif // SHARED_QUEUE_H

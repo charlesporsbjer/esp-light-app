@@ -2,14 +2,15 @@
 #define LED_VARS_H
 
 #include <stdint.h>
+#include <stdbool.h>
 
 
 // Struct to encapsulate LED data
 typedef struct {
-    uint8_t sunLightIntensity;      // 0-255
-    uint8_t currentSunLightIntensity; 
-    char sunlightStart[6];
-    char sunlightEnd[6];
+    uint8_t lightIntensity;      // 0-255
+    uint8_t currentLightIntensity; 
+    char lightStart[6];
+    char lightEnd[6];
     
     uint32_t timeNow;           // Unix timestamp in seconds
     char timeNowString[6];      // HH:MM representation of timeNow
@@ -22,9 +23,9 @@ typedef struct {
     bool friday;
     bool saturday;
     bool sunday;
-} LEDData;
+} led_data_t;
 
-extern LEDData ledData; // Global instance of the LEDData struct
+extern led_data_t ledData; // Global instance of the led_data_t struct
 
 extern bool setup_received;
 

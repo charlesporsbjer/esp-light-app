@@ -14,57 +14,104 @@
 #include "light_control.h"  
 #include "led_vars.h"
 #include "dali.h"
-#include "dali_commands.h"
+#include "logger.h"
+#include "pulse.h"
 
 #define TAG "LIGHT_CONTROL"
 
-#define ON_AND_STEP_UP  DALI_COMMAND_ON_AND_STEP_UP
-#define STEP_UP         DALI_COMMAND_STEP_UP
-#define STEP_DOWN       DALI_COMMAND_STEP_DOWN
-#define OFF             DALI_COMMAND_OFF
+#define PULSE // Uncomment to disable pulse at the end of the schedule
 
-int result = 0; // For storing result of dali query presumably, seems redundant. 
+#define DALI_RX_PIN GPIO_NUM_4 //Not used
+#define DALI_TX_PIN GPIO_NUM_5
+
+
 
 /**
- * @brief Interface for dali commands. 
+ * @brief Sends a simplified DALI command to short address 1.
  * 
- * This function simplifies sending dali commands since we don't need much of the functionality.
+ * Wraps dali_transaction() and uses presets since we don't need much of the functionality.
  * 
- * @param command command to be sent.
+ * @param command The DALI command to send.
  */
-void send_dali_command(uint8_t command) {
-    esp_err_t status = dali_transaction(DALI_ADDRESS_TYPE_SHORT, 1, true, command, false, DALI_TX_TIMEOUT_DEFAULT_MS, &result);
-    if (status == ESP_OK) {
-        // Command successfully sent and response received
-    } else {
-        // Handle error
+void send_dali_command(const uint8_t command) {
+    esp_err_t status = dali_transaction(DALI_ADDRESS_TYPE_SHORT, 1, true, command, false, DALI_TX_TIMEOUT_DEFAULT_MS, NULL);
+    if (status != ESP_OK) {
         ESP_LOGE(TAG, "DALI transaction failed: %s", esp_err_to_name(status));
     }
 }
 
 /**
+ * @brief Flash the light once.
+ * 
+ * This function flashes the light once by sending recall max followed by recall min, then turning it off.
+ */
+void flash_light() {
+    send_dali_command(RECALL_MAX);
+    vTaskDelay(pdMS_TO_TICKS(50)); // Delay in milliseconds
+    send_dali_command(RECALL_MIN);
+    vTaskDelay(pdMS_TO_TICKS(2)); // Delay in milliseconds
+    send_dali_command(OFF); // Turn off the light
+}
+
+/**
+ * @brief Pulses the light for some duration.
+ * 
+ * This function pulses the light from 1 to 255 quickly for a duration and then turns it off.
+ */
+void pulse_light() {
+    uint8_t count = 5;
+    while (count--) {
+        while (ledData.currentLightIntensity < MAX_BRIGHTNESS) {
+            send_dali_command(ON_AND_STEP_UP);
+            vTaskDelay(pdMS_TO_TICKS(2)); // Delay in milliseconds
+            ledData.currentLightIntensity++;
+        }
+        while (ledData.currentLightIntensity > MIN_BRIGHTNESS) {
+            send_dali_command(STEP_DOWN);
+            vTaskDelay(pdMS_TO_TICKS(2)); // Delay in milliseconds
+            ledData.currentLightIntensity--;
+        }
+    }
+    send_dali_command(OFF); // Turn off the light after pulsing
+}    
+
+/**
  * @brief Sends dimmer data according to the schedule.
  * 
  * This function adjusts the light intensities based on the current time and predefined schedules.
- * 
- * @return int 0 on success, -1 on failure.
  */
-int send_dimmer_data() {
+void send_dimmer_data() {
     // Convert timeNow to a string
-    convert_timeNow_to_string(ledData.timeNow, ledData.timeNowString);
+    update_timeNowString(ledData.timeNow, ledData.timeNowString);
 
-    // Adjust sunlight intensity if schedule is active
-    if (strcmp(ledData.timeNowString, ledData.sunlightStart) >= 0 && strcmp(ledData.timeNowString, ledData.sunlightEnd) < 0) {
-        if (ledData.currentSunLightIntensity < ledData.sunLightIntensity) {
+    bool within_schedule = 
+        strcmp(ledData.timeNowString, ledData.lightStart) >= 0 &&
+        strcmp(ledData.timeNowString, ledData.lightEnd) < 0;
+    
+    scheduleStatus.scheduleIsActive = within_schedule;
+    
+    if (within_schedule) {
+
+        if (ledData.currentLightIntensity < ledData.lightIntensity) {
             send_dali_command(ON_AND_STEP_UP);
-            ledData.currentSunLightIntensity++;
+            ledData.currentLightIntensity++;
         }
-    } else if (ledData.currentSunLightIntensity > 0) {
-        send_dali_command(STEP_DOWN);
-        ledData.currentSunLightIntensity--;
+        return;
     }
+    
+    // Outside scheduled window: dim down or turn off
+    if (ledData.currentLightIntensity > MIN_BRIGHTNESS) {
+        ledData.currentLightIntensity--;
+        send_dali_command(STEP_DOWN);
 
-    return 0;
+        if (ledData.currentLightIntensity == MIN_BRIGHTNESS) {
+            send_dali_command(OFF);
+#ifdef PULSE
+            pulse_light(); 
+            //xTaskCreate(pulse_task, "pulse_task", PULSE_STACK_SIZE, NULL, PULSE_TASK_PRIORITY, NULL); // Create a new task for pulsing
+#endif
+        }
+    }
 }
 
 /**
@@ -73,9 +120,7 @@ int send_dimmer_data() {
  * This function increments the current time based on the elapsed time since the last update.
  */
 void update_time_now() {
-    static int64_t elapsed_time_us = 0;
     static int64_t last_time_us = 0;
-    int64_t elapsed_time_s = 0;
     int64_t current_time_us = esp_timer_get_time(); // Get time in microseconds
 
 #ifdef DEBUG
@@ -83,54 +128,54 @@ void update_time_now() {
     ESP_LOGI(TAG, "Current time: %lld us", current_time_us);
 #endif
 
+    // Initialize on first call
     if (last_time_us == 0) {
-        last_time_us = current_time_us; // Initialize last_time_us on the first call
+        last_time_us = current_time_us;
         return;
     }
-    
-    // Update elapsed_time_us
-    elapsed_time_us += current_time_us - last_time_us;
-    
-#ifdef DEBUG
-    ESP_LOGI(TAG, "Elapsed time: %lld us", elapsed_time_us);
-#endif
-    
-    // Update last_time_us before returning
-    last_time_us = current_time_us;
-    
-    if (elapsed_time_us < 1000000) {
-        return; // No need to update if less than 1 second has passed
+
+    int64_t delta_us = current_time_us - last_time_us;
+
+    // Only proceed if >= 1 second has passed
+    if (delta_us < 1000000) {
+        return;
     }
-    
-    // Calculate elapsed seconds and update timeNow
-    elapsed_time_s = elapsed_time_us / 1000000;
-    elapsed_time_us -= elapsed_time_s * 1000000;
-    ledData.timeNow += (uint32_t)elapsed_time_s;
-    
-    // Debug log
+
+    // Update last_time_us and timeNow accordingly
+    uint32_t elapsed_seconds = delta_us / 1000000;
+    last_time_us += (int64_t)elapsed_seconds * 1000000; // keep residual microseconds
+
+    ledData.timeNow += elapsed_seconds;
+
 #ifdef DEBUG
-    ESP_LOGI(TAG, "Updated timeNow: %lu", ledData.timeNow); 
+    ESP_LOGI(TAG, "Elapsed seconds: %u", elapsed_seconds);
+    ESP_LOGI(TAG, "Updated timeNow: %lu", ledData.timeNow);
 #endif
 }
 
 /**
  * @brief Converts a Unix timestamp to the corresponding day of the week.
  * 
- * @param timestamp The Unix timestamp in seconds.
+ * This function uses the gmtime_r function to convert the timestamp to a struct tm and then retrieves the day of the week.
+ * It also updates the logger with the current day of the week.
+ * 
  * @return The day of the week as a string (e.g., "Monday", "Tuesday").
  */
-char* get_day_of_week(uint32_t timestamp) {
+const char* get_day_of_week() {
     // Convert the timestamp to a time_t type
-    time_t raw_time = (time_t)timestamp;
+    time_t raw_time = (time_t)ledData.timeNow;
 
     // Convert the time_t to a struct tm
     struct tm time_info;
     gmtime_r(&raw_time, &time_info); // Use gmtime_r for thread safety
 
     // Array of day names
-    char* days_of_week[] = {
+    static const char* days_of_week[] = {
         "Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"
     };
+
+    // Update logger with the current day of the week
+    logger_set_day_of_week(days_of_week[time_info.tm_wday]);
 
     // Return the day of the week
     return days_of_week[time_info.tm_wday];
@@ -143,40 +188,45 @@ char* get_day_of_week(uint32_t timestamp) {
  * 
  * @return true if the schedule is active for the current day, false otherwise.
  */
-bool is_day_active() {
-    // Check if the schedule is active for the current day
-    char* day_of_week = get_day_of_week(ledData.timeNow);
+bool is_day_active(void) {
+    static const char* days[] = {
+        "Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"
+    };
 
+    const char* day_of_week = get_day_of_week();
+    bool active_flags[] = {
+        ledData.sunday,
+        ledData.monday,
+        ledData.tuesday,
+        ledData.wednesday,
+        ledData.thursday,
+        ledData.friday,
+        ledData.saturday
+    };
+
+    for (int i = 0; i < 7; i++) {
+        if (strcmp(day_of_week, days[i]) == 0) {
 #ifdef DEBUG
-    ESP_LOGI(TAG, "Calculated day of the week: %s", day_of_week);
-    ESP_LOGI(TAG, "Monday: %d, Tuesday: %d, Wednesday: %d, Thursday: %d, Friday: %d, Saturday: %d, Sunday: %d",
-             ledData.monday, ledData.tuesday, ledData.wednesday, ledData.thursday, ledData.friday, ledData.saturday, ledData.sunday);
-#endif // DEBUG
-
-    if ((strcmp(day_of_week, "Monday") == 0 && !ledData.monday) ||
-        (strcmp(day_of_week, "Tuesday") == 0 && !ledData.tuesday) ||
-        (strcmp(day_of_week, "Wednesday") == 0 && !ledData.wednesday) ||
-        (strcmp(day_of_week, "Thursday") == 0 && !ledData.thursday) ||
-        (strcmp(day_of_week, "Friday") == 0 && !ledData.friday) ||
-        (strcmp(day_of_week, "Saturday") == 0 && !ledData.saturday) ||
-        (strcmp(day_of_week, "Sunday") == 0 && !ledData.sunday)) 
-    {
-        ESP_LOGI(TAG, "Schedule is not active for %s", day_of_week);
-        return false; // Schedule is not active for the current day
+            ESP_LOGI(TAG, "Today is %s, Active: %d", days[i], active_flags[i]);
+#endif
+            return active_flags[i];
+        }
     }
 
-    return true; // Schedule is active for the current day
+    // If day string is unexpected (shouldn't happen), assume inactive
+    ESP_LOGW(TAG, "Unknown day: %s", day_of_week);
+    return false;
 }
 
 /**
- * @brief Converts the timeNow to a string in HH:MM format.
+ * @brief Converts unix timestamp to HH:MM format.
  * 
- * This function formats the Unix timestamp into a human-readable time string, considering timezone and DST.
+ * This function formats the Unix timestamp into a human-readable string, considering timezone.
  * 
  * @param timeNow The unix timestamp in seconds.
  * @param buffer The buffer to store the converted string.
  */
-void convert_timeNow_to_string(uint32_t timeNow, char* buffer) {
+void update_timeNowString(uint32_t timeNow, char* buffer) {
     // Convert timeNow to HH:MM format
     timeNow += ledData.timezone * 3600; // Add timezone offset in seconds
 
@@ -189,34 +239,46 @@ void convert_timeNow_to_string(uint32_t timeNow, char* buffer) {
 /**
  * @brief Task to control the lights.
  * 
- * This task periodically updates the light intensities and processes incoming data.
+ * This task periodically updates the light intensities according to schedule.
  * 
  * @param pvParameters Parameters for the task (not used).
  */
 void light_control_task(void *pvParameters) {
-    static int log_counter = 0; // Counter to control log frequency
+#ifdef DEBUG
+    ESP_LOGI(TAG, "Light control task started");
+#endif // DEBUG
+    static uint16_t log_counter = 0; // Counter to control log frequency
+    logger_init_schedule_status(); // Initialize schedule status
 
-    dali_init(GPIO_NUM_21, GPIO_NUM_22);
+    dali_init(DALI_RX_PIN, DALI_TX_PIN);
 
-    // SEND ONE PULSE MAYBE, THEN OFF
-    send_dali_command("STEP_UP")
+    // SEND ONE PULSE, THEN OFF
+    while (!setup_received) {
+        ESP_LOGI(TAG, "No setup sent, sending blink");
+        send_dali_command(ON_AND_STEP_UP);
+        send_dali_command(STEP_DOWN);
+        send_dali_command(OFF);
+        vTaskDelay(pdMS_TO_TICKS(3000));
+    }
 
     while (1) {
         if (setup_received) {
+            update_time_now(); // Update the current time
+
             if (is_day_active()) {
+                scheduleStatus.todayIsActive = true; // Set today as active
                 send_dimmer_data(); // Send dimmer data according to the schedule
             }
+            else { 
+                scheduleStatus.todayIsActive = false; // Set today as inactive
+            }
 
-            // Print time now string less often
-            if (log_counter % 10 == 0) { // Print every 10 iterations
-                ESP_LOGI(TAG, "Day now: %s", get_day_of_week(ledData.timeNow));
-                ESP_LOGI(TAG, "Time now string: %s, UTS: %lu", ledData.timeNowString, ledData.timeNow);
+            if (log_counter % 10 == 0) { // Print every 50 iterations
+               logger_print_schedule_status(&ledData); // Print schedule status
             }
             log_counter++;
-
-            update_time_now(); // Update the current time
         }
-        vTaskDelay(pdMS_TO_TICKS(100)); // Delay for 1 second
+        vTaskDelay(pdMS_TO_TICKS(500)); 
     }
     vTaskDelete(NULL); // Delete the task when done
 }

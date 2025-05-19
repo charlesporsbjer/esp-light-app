@@ -25,7 +25,7 @@
 #define DATA_TASK_STACK_SIZE 4096
 #define DATA_TASK_PRIORITY 5
 
-LEDData ledData; // Global LED data structure
+led_data_t ledData; // Global LED data structure
 
 QueueHandle_t shared_queue; // Define the queue handle
 
@@ -36,7 +36,6 @@ QueueHandle_t shared_queue; // Define the queue handle
  * the BLE GATT server.
  */
 void app_main(void) {
-    
     // Create the queue
     shared_queue = xQueueCreate(10, sizeof(QueueData_t));
     if (shared_queue == NULL) {

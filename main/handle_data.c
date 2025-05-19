@@ -21,6 +21,9 @@
 #define LIGHT_CONTROL_STACK_SIZE 2048 // Stack size for light control task
 #define LIGHT_CONTROL_TASK_PRIORITY 4 // Priority for light control task
 
+#define MIN_BRIGHTNESS 1
+#define MAX_BRIGHTNESS 254
+
 // #define DEBUG
 
 bool setup_received = false; // Flag to check if setup data has been received
@@ -57,22 +60,22 @@ int parse_led_data(char* jsonstr) {
         cJSON_Delete(root);
         return -1;
     }
-    if (strlen(strlen(cJSON_GetObjectItem(root, "sunlightStart")->valuestring) != 5 || strlen(cJSON_GetObjectItem(root, "sunlightEnd")->valuestring) != 5) {
+    if (strlen(cJSON_GetObjectItem(root, "sunlightStart")->valuestring) != 5 || strlen(cJSON_GetObjectItem(root, "sunlightEnd")->valuestring) != 5) {
         ESP_LOGE(TAG, "Error parsing JSON string. Wrong time format.");
         cJSON_Delete(root);
         return -1;
     }
-    if (cJSON_GetObjectItem(root, "sunLightIntensity")->valueint < 0) {
+    if (cJSON_GetObjectItem(root, "sunLightIntensity")->valueint < MIN_BRIGHTNESS) {
         ESP_LOGE(TAG, "Error parsing JSON string. Negative intensity.");
         cJSON_Delete(root);
         return -1;
     }
-    if (cJSON_GetObjectItem(root, "sunLightIntensity")->valueint > 100) {
-        ESP_LOGE(TAG, "Error parsing JSON string. Intensity over 100.");
+    if (cJSON_GetObjectItem(root, "sunLightIntensity")->valueint > MAX_BRIGHTNESS) {
+        ESP_LOGE(TAG, "Error parsing JSON string. Intensity over maximum brightness.");
         cJSON_Delete(root);
         return -1;
     }
-    if (strcmp(strcmp(cJSON_GetObjectItem(root, "sunlightStart")->valuestring, cJSON_GetObjectItem(root, "sunlightEnd")->valuestring) == 0) {
+    if (strcmp(cJSON_GetObjectItem(root, "sunlightStart")->valuestring, cJSON_GetObjectItem(root, "sunlightEnd")->valuestring) == 0) {
         ESP_LOGE(TAG, "Error parsing JSON string. Start and end times are the same.");
         cJSON_Delete(root);
         return -1;
@@ -87,16 +90,16 @@ int parse_led_data(char* jsonstr) {
     
     // get timeNow and convert to string
     ledData.timeNow = cJSON_GetObjectItem(root, "timeNow")->valueint;
-    convert_timeNow_to_string(ledData.timeNow, ledData.timeNowString);
+    update_timeNowString(ledData.timeNow, ledData.timeNowString);
     
     // get the timezone    
     ledData.timezone = cJSON_GetObjectItem(root, "timeZoneOffsetHrs")->valueint;
     
     // copy the values intensities
-    ledData.sunLightIntensity = cJSON_GetObjectItem(root, "sunLightIntensity")->valueint;
+    ledData.lightIntensity = cJSON_GetObjectItem(root, "sunLightIntensity")->valueint;
 
-    strcpy(ledData.sunlightStart, cJSON_GetObjectItem(root, "sunlightStart")->valuestring);
-    strcpy(ledData.sunlightEnd, cJSON_GetObjectItem(root, "sunlightEnd")->valuestring);
+    strcpy(ledData.lightStart, cJSON_GetObjectItem(root, "sunlightStart")->valuestring);
+    strcpy(ledData.lightEnd, cJSON_GetObjectItem(root, "sunlightEnd")->valuestring);
     
     // set the boolean values for the days of the week
     ledData.monday = cJSON_GetObjectItem(root, "Monday")->valueint;
@@ -107,10 +110,12 @@ int parse_led_data(char* jsonstr) {
     ledData.saturday = cJSON_GetObjectItem(root, "Saturday")->valueint;
     ledData.sunday = cJSON_GetObjectItem(root, "Sunday")->valueint;
 
-    cJSON_Delete(root);
+    cJSON_Delete(root); // Free the JSON object
     
-    setup_received = true; // Set the flag to indicate that setup data has been received
-
+    setup_received = true; // This flag lets the light control task know that setup data has been received
+    
+    flash_light(); // Flash the light once to indicate that setup data has been received
+    
     return 0;    
 }
 
@@ -122,10 +127,10 @@ int parse_led_data(char* jsonstr) {
 void print_led_data() {
     ESP_LOGI(TAG, "Time now: %lu", ledData.timeNow);
     ESP_LOGI(TAG, "Time now string: %s", ledData.timeNowString);
-    ESP_LOGI(TAG, "Sun light intensity: %d", ledData.sunLightIntensity);
-    ESP_LOGI(TAG, "Current sunlight intensity: %d", ledData.currentSunLightIntensity);
-    ESP_LOGI(TAG, "Sun light start: %s", ledData.sunlightStart);
-    ESP_LOGI(TAG, "Sun light end: %s", ledData.sunlightEnd);
+    ESP_LOGI(TAG, "Target light intensity: %d", ledData.lightIntensity);
+    ESP_LOGI(TAG, "Current light intensity: %d", ledData.currentLightIntensity);
+    ESP_LOGI(TAG, "Light start: %s", ledData.lightStart);
+    ESP_LOGI(TAG, "Light end: %s", ledData.lightEnd);
 }
 
 /**
@@ -134,18 +139,14 @@ void print_led_data() {
  * This function sets default values for the LED data, including intensities and schedules.
  */
 void init_led_data() {
-    // Timestamp
     ledData.timeNow = 0;
     ledData.timeNowString[0] = '\0';
-    
-    // Timezone
     ledData.timezone = 0; // Initialize to UTC+0
 
-    // Sunlight
-    ledData.sunLightIntensity = 0;
-    ledData.currentSunlightIntensity = 0; // remember to make use of this new variable.
-    ledData.sunlightStart[0] = '\0';
-    ledData.sunlightEnd[0] = '\0';
+    ledData.lightIntensity = 0;
+    ledData.currentLightIntensity = 0;
+    ledData.lightStart[0] = '\0';
+    ledData.lightEnd[0] = '\0';
 
     ledData.monday = false;
     ledData.tuesday = false;
@@ -176,7 +177,7 @@ void handle_light_protocol(QueueData_t *data_received) {
 /**
  * @brief Task to control the lights.
  * 
- * This task periodically updates the light intensities and processes incoming data.
+ * This task processes incoming data.
  * 
  * @param pvParameters Parameters for the task (not used).
  */
