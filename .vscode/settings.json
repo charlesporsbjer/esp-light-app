@@ -1,27 +1,13 @@
 {
-  "C_Cpp.intelliSenseEngine": "default",
-  "idf.espIdfPathWin": "C:\\Users\\Charlie\\esp\\v5.4\\esp-idf",
-  "idf.pythonInstallPath": "C:\\Users\\Charlie\\.espressif\\tools\\idf-python\\3.11.2\\python.exe",
-  "idf.openOcdConfigs": ["board/esp32c6-ftdi.cfg"],
-  "idf.portWin": "COM3",
-  "idf.toolsPathWin": "C:\\Users\\Charlie\\.espressif",
-  "idf.customExtraVars": {
-    "IDF_TARGET": "esp32c6"
-  },
-  "idf.flashType": "UART",
-  "files.associations": {
-    "freertos.h": "c",
-    "bt_component.h": "c",
-    "esp_gap_ble_api.h": "c",
-    "event_groups.h": "c",
-    "esp_gatt_common_api.h": "c",
-    "soc_caps.h": "c",
-    "clk_tree_defs.h": "c",
-    "shared_queue.h": "c",
-    "random": "c",
-    "bt_vars.h": "c",
-    "string.h": "c",
-    "esp_mac.h": "c",
-    "cjson.h": "c"
-  }
+    "idf.flashType": "UART",
+    "idf.openOcdConfigs": [
+        "board/esp32c6-ftdi.cfg"
+    ],
+    "idf.customExtraVars": {
+        "OPENOCD_SCRIPTS": "C:\\Users\\maple\\.espressif\\tools\\openocd-esp32\\v0.12.0-esp32-20240318/openocd-esp32/share/openocd/scripts",
+        "IDF_CCACHE_ENABLE": "1",
+        "ESP_ROM_ELF_DIR": "C:\\Users\\maple\\.espressif\\tools\\esp-rom-elfs\\20240305/",
+        "IDF_TARGET": "esp32c6"
+    },
+    "idf.portWin": "COM9"
 }

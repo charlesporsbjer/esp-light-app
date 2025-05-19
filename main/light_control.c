@@ -9,134 +9,37 @@
 #include "esp_mac.h"
 #include "esp_system.h"
 #include "esp_timer.h"
-#include "driver/ledc.h"
-#include "driver/gpio.h"
+
 
 #include "light_control.h"  
 #include "led_vars.h"
+#include "dali.h"
+#include "dali_commands.h"
 
 #define TAG "LIGHT_CONTROL"
-#define MAX_DUTY_CYCLE ((1 << LEDC_DUTY_RES) - 1)
 
-// Global variables for current light intensity and time
-uint32_t currentRedLightIntensity = 0;
-uint32_t currentSunLightIntensity = 0;
-double currentRedLightIntensityDouble = 1.0;
-double currentSunLightIntensityDouble = 1.0;
+#define ON_AND_STEP_UP  DALI_COMMAND_ON_AND_STEP_UP
+#define STEP_UP         DALI_COMMAND_STEP_UP
+#define STEP_DOWN       DALI_COMMAND_STEP_DOWN
+#define OFF             DALI_COMMAND_OFF
 
-/**
- * @brief Initializes the LEDC (LED Controller) for controlling the lights.
- * 
- * This function configures the LEDC timer and channels for controlling the red light and sunlight.
- */
-void init_ledc() {
-    ledc_timer_config_t ledc_timer = {
-        .speed_mode = LEDC_MODE,
-        .timer_num = LEDC_TIMER,
-        .duty_resolution = LEDC_DUTY_RES,
-        .freq_hz = LEDC_FREQUENCY,
-        .clk_cfg = LEDC_AUTO_CLK
-    };
-    ledc_timer_config(&ledc_timer);
-
-    ledc_channel_config_t red_channel = {
-        .gpio_num = RED_LIGHT_GPIO,
-        .speed_mode = LEDC_MODE,
-        .channel = LEDC_OUTPUT_RED,
-        .intr_type = LEDC_INTR_DISABLE,
-        .timer_sel = LEDC_TIMER,
-        .duty = 0,
-        .hpoint = 0
-    };
-    ledc_channel_config(&red_channel);
-
-    ledc_channel_config_t sunlight_channel = {
-        .gpio_num = SUNLIGHT_GPIO, // 19
-        .speed_mode = LEDC_MODE,
-        .channel = LEDC_OUTPUT_SUNLIGHT,
-        .intr_type = LEDC_INTR_DISABLE,
-        .timer_sel = LEDC_TIMER,
-        .duty = 0,
-        .hpoint = 0
-    };
-    ledc_channel_config(&sunlight_channel);
-}
+int result = 0; // For storing result of dali query presumably, seems redundant. 
 
 /**
- * @brief Sends the light intensity to the appropriate GPIO pin.
+ * @brief Interface for dali commands. 
  * 
- * This function calculates the duty cycle based on the intensity percentage and updates the LEDC duty.
+ * This function simplifies sending dali commands since we don't need much of the functionality.
  * 
- * @param intensity The intensity of the light in percentage (0-100).
- * @param is_red_light True if controlling the red light, false if controlling the sunlight.
+ * @param command command to be sent.
  */
-void send_light_intensity(bool is_red_light) {
-    const char* light_type = is_red_light ? "Red" : "Sunlight";
-    uint32_t targetIntensity = is_red_light ? ledData.redLightIntensity : ledData.sunLightIntensity;
-    uint32_t targetIntensityDuty = (targetIntensity * MAX_DUTY_CYCLE) / 100;
-    uint32_t intensity = is_red_light ? currentRedLightIntensity : currentSunLightIntensity;
-
-    ESP_LOGI(TAG, "%s target: %lu%% (%lu), setting to: %.2f%% (%lu)", light_type, targetIntensity, targetIntensityDuty, (intensity / (float)(MAX_DUTY_CYCLE) * 100), intensity);
-
-    // Set and update the duty cycle
-    if (is_red_light) {
-        ledc_set_duty(LEDC_MODE, LEDC_OUTPUT_RED, intensity);
-        ledc_update_duty(LEDC_MODE, LEDC_OUTPUT_RED);
+void send_dali_command(uint8_t command) {
+    esp_err_t status = dali_transaction(DALI_ADDRESS_TYPE_SHORT, 1, true, command, false, DALI_TX_TIMEOUT_DEFAULT_MS, &result);
+    if (status == ESP_OK) {
+        // Command successfully sent and response received
     } else {
-        ledc_set_duty(LEDC_MODE, LEDC_OUTPUT_SUNLIGHT, intensity);
-        ledc_update_duty(LEDC_MODE, LEDC_OUTPUT_SUNLIGHT);
+        // Handle error
+        ESP_LOGE(TAG, "DALI transaction failed: %s", esp_err_to_name(status));
     }
-}
-
-/**
- * @brief This function turns off the lights by setting their duty cycle to 0.
- * 
- * @param is_red_light True if controlling the red light, false if controlling the sunlight.
- */
-void turn_light_off(bool is_red_light) {
-    if (is_red_light) {
-        ledc_set_duty(LEDC_MODE, LEDC_OUTPUT_RED, 0);
-        ledc_update_duty(LEDC_MODE, LEDC_OUTPUT_RED);
-    } else {
-        ledc_set_duty(LEDC_MODE, LEDC_OUTPUT_SUNLIGHT, 0);
-        ledc_update_duty(LEDC_MODE, LEDC_OUTPUT_SUNLIGHT);
-    }
-}
-
-/**
- * @brief This function turns on the lights by setting their duty cycle to the maximum value.
- * 
- * @param is_red_light True if controlling the red light, false if controlling the sunlight.
- */
-void turn_light_on(bool is_red_light) {
-    uint32_t max_duty = MAX_DUTY_CYCLE; // Maximum duty cycle
-    if (is_red_light) {
-        ledc_set_duty(LEDC_MODE, LEDC_OUTPUT_RED, max_duty);
-        ledc_update_duty(LEDC_MODE, LEDC_OUTPUT_RED);
-    } else {
-        ledc_set_duty(LEDC_MODE, LEDC_OUTPUT_SUNLIGHT, max_duty);
-        ledc_update_duty(LEDC_MODE, LEDC_OUTPUT_SUNLIGHT);
-    }
-}
-
-/**
- * @brief This function adjusts the intensity of the light by a given delta value.
- * 
- * @param intensity Pointer to the intensity variable to be adjusted.
- * @param intensityDouble Pointer to the double representation of the intensity.
- * @param delta The change in intensity (positive or negative).
- * @param max The maximum allowed intensity.
- */
-void adjust_intensity(uint32_t *intensity, double *intensityDouble, int delta, int max) {
-    *intensityDouble *= pow(2, delta / 40.0);
-
-    if (*intensityDouble > max) {
-        *intensityDouble = max;
-    } else if (*intensityDouble < 0.0) {
-        *intensityDouble = 0.0;
-    }
-
-    *intensity = (uint32_t)(floor(*intensityDouble));
 }
 
 /**
@@ -150,33 +53,15 @@ int send_dimmer_data() {
     // Convert timeNow to a string
     convert_timeNow_to_string(ledData.timeNow, ledData.timeNowString);
 
-    // Calculate the maximum duty cycle based on LEDC resolution
-    uint32_t max_duty = MAX_DUTY_CYCLE;
-
-    // Scale the target intensity directly to the full LEDC resolution
-    uint32_t targetRedLightDuty = (ledData.redLightIntensity * max_duty) / 100;
-    uint32_t targetSunLightDuty = (ledData.sunLightIntensity * max_duty) / 100;
-
-    // Adjust red light intensity if schedule is active
-    if (strcmp(ledData.timeNowString, ledData.redLightStart) >= 0 && strcmp(ledData.timeNowString, ledData.redLightEnd) < 0) {
-        if (currentRedLightIntensity < targetRedLightDuty) {
-            adjust_intensity(&currentRedLightIntensity, &currentRedLightIntensityDouble, 1, max_duty);
-        }
-        send_light_intensity(true);
-    } else if (currentRedLightIntensity > 0) {
-        adjust_intensity(&currentRedLightIntensity, &currentRedLightIntensityDouble, -1, max_duty);
-        send_light_intensity(true);
-    }
-
     // Adjust sunlight intensity if schedule is active
     if (strcmp(ledData.timeNowString, ledData.sunlightStart) >= 0 && strcmp(ledData.timeNowString, ledData.sunlightEnd) < 0) {
-        if (currentSunLightIntensity < targetSunLightDuty) {
-            adjust_intensity(&currentSunLightIntensity, &currentSunLightIntensityDouble, 1, max_duty);
+        if (ledData.currentSunLightIntensity < ledData.sunLightIntensity) {
+            send_dali_command(ON_AND_STEP_UP);
+            ledData.currentSunLightIntensity++;
         }
-        send_light_intensity(false);
-    } else if (currentSunLightIntensity > 0) {
-        adjust_intensity(&currentSunLightIntensity, &currentSunLightIntensityDouble, -1, max_duty);
-        send_light_intensity(false);
+    } else if (ledData.currentSunLightIntensity > 0) {
+        send_dali_command(STEP_DOWN);
+        ledData.currentSunLightIntensity--;
     }
 
     return 0;
@@ -293,12 +178,6 @@ bool is_day_active() {
  */
 void convert_timeNow_to_string(uint32_t timeNow, char* buffer) {
     // Convert timeNow to HH:MM format
-    
-    // if (ledData.daylightSavingsTime) {
-    //     timeNow += 3600; // Add 1 hour for daylight savings time
-    // }
-    // daylight savings time is handled automatically by the app.
-
     timeNow += ledData.timezone * 3600; // Add timezone offset in seconds
 
     uint32_t hours = (timeNow / 3600) % 24;
@@ -317,9 +196,10 @@ void convert_timeNow_to_string(uint32_t timeNow, char* buffer) {
 void light_control_task(void *pvParameters) {
     static int log_counter = 0; // Counter to control log frequency
 
-    init_ledc(); // Initialize LEDC for controlling lights
-    send_light_intensity(true); // Set initial red light intensity to 0
-    send_light_intensity(false); // Set initial sunlight intensity to 0
+    dali_init(GPIO_NUM_21, GPIO_NUM_22);
+
+    // SEND ONE PULSE MAYBE, THEN OFF
+    send_dali_command("STEP_UP")
 
     while (1) {
         if (setup_received) {

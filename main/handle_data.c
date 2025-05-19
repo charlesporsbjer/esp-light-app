@@ -34,7 +34,7 @@ bool setup_received = false; // Flag to check if setup data has been received
  * @return 0 on success, -1 on failure.
  */ 
 int parse_led_data(char* jsonstr) {
-    // example JSON string: {"redLightStart":"12:12","redLightEnd":"13:12","redLightIntensity":10,"sunlightStart":"12:12","sunlightEnd":"18:12","sunLightIntensity":96,"Monday":true,"Tuesday":true,"Wednesday":true,"Thursday":true,"Friday":true,"Saturday":false,"Sunday":false,"timeNow":1744893150,"daylightSavingsTime":true,"timeZoneOffsetHrs":1}
+    // example JSON string: {"sunlightStart":"12:12","sunlightEnd":"18:12","sunLightIntensity":96,"Monday":true,"Tuesday":true,"Wednesday":true,"Thursday":true,"Friday":true,"Saturday":false,"Sunday":false,"timeNow":1744893150,"timeZoneOffsetHrs":1}
     cJSON *root = cJSON_Parse(jsonstr);
 
     // Excessive error checking
@@ -52,27 +52,27 @@ int parse_led_data(char* jsonstr) {
         cJSON_Delete(root);
         return -1;
     }
-    if (cJSON_GetObjectItem(root, "sunLightIntensity")->type != cJSON_Number || cJSON_GetObjectItem(root, "redLightIntensity")->type != cJSON_Number || cJSON_GetObjectItem(root, "redLightStart")->type != cJSON_String || cJSON_GetObjectItem(root, "redLightEnd")->type != cJSON_String || cJSON_GetObjectItem(root, "sunlightStart")->type != cJSON_String || cJSON_GetObjectItem(root, "sunlightEnd")->type != cJSON_String) {
+    if (cJSON_GetObjectItem(root, "sunLightIntensity")->type != cJSON_Number || cJSON_GetObjectItem(root, "sunlightStart")->type != cJSON_String || cJSON_GetObjectItem(root, "sunlightEnd")->type != cJSON_String) {
         ESP_LOGE(TAG, "Error parsing JSON string. Wrong schedule types.");
         cJSON_Delete(root);
         return -1;
     }
-    if (strlen(cJSON_GetObjectItem(root, "redLightStart")->valuestring) != 5 || strlen(cJSON_GetObjectItem(root, "redLightEnd")->valuestring) != 5 || strlen(cJSON_GetObjectItem(root, "sunlightStart")->valuestring) != 5 || strlen(cJSON_GetObjectItem(root, "sunlightEnd")->valuestring) != 5) {
+    if (strlen(strlen(cJSON_GetObjectItem(root, "sunlightStart")->valuestring) != 5 || strlen(cJSON_GetObjectItem(root, "sunlightEnd")->valuestring) != 5) {
         ESP_LOGE(TAG, "Error parsing JSON string. Wrong time format.");
         cJSON_Delete(root);
         return -1;
     }
-    if (cJSON_GetObjectItem(root, "sunLightIntensity")->valueint < 0 || cJSON_GetObjectItem(root, "redLightIntensity")->valueint < 0) {
+    if (cJSON_GetObjectItem(root, "sunLightIntensity")->valueint < 0) {
         ESP_LOGE(TAG, "Error parsing JSON string. Negative intensity.");
         cJSON_Delete(root);
         return -1;
     }
-    if (cJSON_GetObjectItem(root, "sunLightIntensity")->valueint > 100 || cJSON_GetObjectItem(root, "redLightIntensity")->valueint > 100) {
+    if (cJSON_GetObjectItem(root, "sunLightIntensity")->valueint > 100) {
         ESP_LOGE(TAG, "Error parsing JSON string. Intensity over 100.");
         cJSON_Delete(root);
         return -1;
     }
-    if (strcmp(cJSON_GetObjectItem(root, "redLightStart")->valuestring, cJSON_GetObjectItem(root, "redLightEnd")->valuestring) == 0 || strcmp(cJSON_GetObjectItem(root, "sunlightStart")->valuestring, cJSON_GetObjectItem(root, "sunlightEnd")->valuestring) == 0) {
+    if (strcmp(strcmp(cJSON_GetObjectItem(root, "sunlightStart")->valuestring, cJSON_GetObjectItem(root, "sunlightEnd")->valuestring) == 0) {
         ESP_LOGE(TAG, "Error parsing JSON string. Start and end times are the same.");
         cJSON_Delete(root);
         return -1;
@@ -89,17 +89,12 @@ int parse_led_data(char* jsonstr) {
     ledData.timeNow = cJSON_GetObjectItem(root, "timeNow")->valueint;
     convert_timeNow_to_string(ledData.timeNow, ledData.timeNowString);
     
-    // get the timezone and daylight savings time
-    ledData.daylightSavingsTime = cJSON_GetObjectItem(root, "daylightSavingsTime")->valueint;
+    // get the timezone    
     ledData.timezone = cJSON_GetObjectItem(root, "timeZoneOffsetHrs")->valueint;
     
     // copy the values intensities
     ledData.sunLightIntensity = cJSON_GetObjectItem(root, "sunLightIntensity")->valueint;
-    ledData.redLightIntensity = cJSON_GetObjectItem(root, "redLightIntensity")->valueint;
-    
-    // copy the strings for the start and end times
-    strcpy(ledData.redLightStart, cJSON_GetObjectItem(root, "redLightStart")->valuestring);
-    strcpy(ledData.redLightEnd, cJSON_GetObjectItem(root, "redLightEnd")->valuestring);
+
     strcpy(ledData.sunlightStart, cJSON_GetObjectItem(root, "sunlightStart")->valuestring);
     strcpy(ledData.sunlightEnd, cJSON_GetObjectItem(root, "sunlightEnd")->valuestring);
     
@@ -127,10 +122,8 @@ int parse_led_data(char* jsonstr) {
 void print_led_data() {
     ESP_LOGI(TAG, "Time now: %lu", ledData.timeNow);
     ESP_LOGI(TAG, "Time now string: %s", ledData.timeNowString);
-    ESP_LOGI(TAG, "Red light intensity: %d", ledData.redLightIntensity);
-    ESP_LOGI(TAG, "Red light start: %s", ledData.redLightStart);
-    ESP_LOGI(TAG, "Red light end: %s", ledData.redLightEnd);
     ESP_LOGI(TAG, "Sun light intensity: %d", ledData.sunLightIntensity);
+    ESP_LOGI(TAG, "Current sunlight intensity: %d", ledData.currentSunLightIntensity);
     ESP_LOGI(TAG, "Sun light start: %s", ledData.sunlightStart);
     ESP_LOGI(TAG, "Sun light end: %s", ledData.sunlightEnd);
 }
@@ -146,16 +139,11 @@ void init_led_data() {
     ledData.timeNowString[0] = '\0';
     
     // Timezone
-    ledData.daylightSavingsTime = false;
     ledData.timezone = 0; // Initialize to UTC+0
-    
-    // Red light
-    ledData.redLightIntensity = 0;
-    ledData.redLightStart[0] = '\0';
-    ledData.redLightEnd[0] = '\0';
 
     // Sunlight
     ledData.sunLightIntensity = 0;
+    ledData.currentSunlightIntensity = 0; // remember to make use of this new variable.
     ledData.sunlightStart[0] = '\0';
     ledData.sunlightEnd[0] = '\0';
 

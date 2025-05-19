@@ -2,44 +2,15 @@
 #define LIGHT_CONTROL_H
 
 #include <stdint.h>
-#include <stdbool.h>
 
 /**
- * @brief Initializes the LEDC (LED Controller) for controlling the lights.
- */
-void init_ledc();
-
-/**
- * @brief Sends the light intensity to the appropriate GPIO pin.
+ * @brief Interface for dali commands. 
  * 
- * @param intensity The intensity of the light in percentage (0-100).
- * @param is_red_light True if controlling the red light, false if controlling the sunlight.
- */
-void send_light_intensity(bool is_red_light);
-
-/**
- * @brief This function turns off the lights by setting their duty cycle to 0.
+ * This function simplifies sending dali commands since we don't need much of the functionality.
  * 
- * @param is_red_light True if controlling the red light, false if controlling the sunlight.
+ * @param command command to be sent.
  */
-void turn_light_off(bool is_red_light);
-
-/**
- * @brief This function turns on the lights by setting their duty cycle to the maximum value.
- * 
- * @param is_red_light True if controlling the red light, false if controlling the sunlight.
- */
-void turn_light_on(bool is_red_light);
-
-/**
- * @brief This function adjusts the intensity of the light by a given delta value.
- * 
- * @param intensity Pointer to the intensity variable to be adjusted.
- * @param intensityDouble Pointer to the double representation of the intensity.
- * @param delta The change in intensity (positive or negative).
- * @param max The maximum allowed intensity.
- */
-void adjust_intensity(uint32_t *intensity, double *intensityDouble, int delta, int max);
+void send_dali_command(char* command);
 
 /**
  * @brief Sends dimmer data according to the schedule.
