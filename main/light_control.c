@@ -56,10 +56,10 @@ void flash_light() {
 /**
  * @brief Pulses the light for some duration.
  * 
- * This function pulses the light from 1 to 255 quickly for a duration and then turns it off.
+ * This function pulses the light from 1 to 254 quickly for a duration and then turns it off.
  */
-void pulse_light() {
-    uint8_t count = 5;
+#ifdef PULSE
+void pulse_light(uint8_t count) {
     while (count--) {
         while (ledData.currentLightIntensity < MAX_BRIGHTNESS) {
             send_dali_command(ON_AND_STEP_UP);
@@ -73,7 +73,8 @@ void pulse_light() {
         }
     }
     send_dali_command(OFF); // Turn off the light after pulsing
-}    
+}
+#endif //PULSE
 
 /**
  * @brief Sends dimmer data according to the schedule.
@@ -107,7 +108,7 @@ void send_dimmer_data() {
         if (ledData.currentLightIntensity == MIN_BRIGHTNESS) {
             send_dali_command(OFF);
 #ifdef PULSE
-            pulse_light(); 
+            pulse_light(3); 
             //xTaskCreate(pulse_task, "pulse_task", PULSE_STACK_SIZE, NULL, PULSE_TASK_PRIORITY, NULL); // Create a new task for pulsing
 #endif
         }

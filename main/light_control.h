@@ -14,6 +14,8 @@
 #define MIN_BRIGHTNESS 1
 #define MAX_BRIGHTNESS 254
 
+#define PULSE // Uncomment to disable pulse at the end of the schedule
+
 /**
  * @brief Interface for dali commands. 
  * 
@@ -35,7 +37,9 @@ void flash_light();
  * 
  * This function pulses the light from 1 to 255 quickly for a duration and then turns it off.
  */
-void pulse_light();
+#ifdef PULSE
+void pulse_light(uint8_t count);
+#endif //PULSE
 
 /**
  * @brief Sends dimmer data according to the schedule.
